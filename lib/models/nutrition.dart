@@ -101,9 +101,10 @@ class Nutrition {
     );
   }
 
-  /// 文字列から最初の数値を取り出す（"350kcal" -> 350, "50-60g" -> 50）
+  /// 文字列から最初の数値を取り出す（"350kcal" -> 350, "50-60g" -> 50,
+  /// "-100kcal" -> -100  ※運動などカロリー消費を負の値で記録できるようにする）
   static double _num(String s) {
-    final m = RegExp(r'(\d+(?:\.\d+)?)').firstMatch(s);
+    final m = RegExp(r'(-?\d+(?:\.\d+)?)').firstMatch(s);
     if (m == null) return 0;
     return double.tryParse(m.group(1)!) ?? 0;
   }

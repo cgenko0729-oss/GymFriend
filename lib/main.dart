@@ -1091,9 +1091,11 @@ class _EditEntryDialogState extends State<_EditEntryDialog> {
                     child: TextField(
                       controller: _kcalCtrl,
                       keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true),
+                          decimal: true, signed: true),
                       decoration: const InputDecoration(
-                          labelText: 'カロリー(kcal)'),
+                        labelText: 'カロリー(kcal)',
+                        hintText: '運動などは -100 のように入力',
+                      ),
                     ),
                   ),
                   const SizedBox(width: 12),
