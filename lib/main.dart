@@ -187,6 +187,18 @@ class FoodProvider extends ChangeNotifier {
     }
   }
 
+  // ---- 記録の編集（日付・名前・栄養値・評価）----
+  Future<void> updateEntry(
+    FoodEntry entry, {
+    required DateTime timestamp,
+    required String summary,
+  }) async {
+    entry.timestamp = timestamp;
+    entry.summary = summary;
+    await entry.save();
+    notifyListeners();
+  }
+
   Future<void> deleteEntry(FoodEntry entry) async {
     if (entry.imagePath.isNotEmpty && entry.imagePath != 'MEAL_PLAN') {
       try {
@@ -496,7 +508,7 @@ class _HomeScreenState extends State<HomeScreen> {
           context,
           MaterialPageRoute(builder: (_) => DetailScreen(entry: entry)),
         ),
-        onLongPress: () => _confirmDelete(context, entry),
+        onLongPress: () => _showEntryActions(context, entry),
         borderRadius: BorderRadius.circular(12),
         child: Padding(
           padding: const EdgeInsets.all(12.0),
@@ -587,6 +599,39 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  void _showEntryActions(BuildContext context, FoodEntry entry) {
+    showModalBottomSheet(
+      context: context,
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Wrap(
+            children: [
+              ListTile(
+                leading: const Icon(Icons.edit),
+                title: const Text('編集'),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  showDialog(
+                    context: context,
+                    builder: (_) => _EditEntryDialog(entry: entry),
+                  );
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.delete, color: Colors.red),
+                title: const Text('削除', style: TextStyle(color: Colors.red)),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  _confirmDelete(context, entry);
+                },
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -773,6 +818,217 @@ class _HomeScreenState extends State<HomeScreen> {
       default:
         return Colors.grey;
     }
+  }
+}
+
+/// 記録編集ダイアログ。日付・食べ物名・栄養値・評価を編集できる。
+/// 食事プラン記録は日付のみ編集可能（栄養項目は表示しない）。
+class _EditEntryDialog extends StatefulWidget {
+  final FoodEntry entry;
+
+  const _EditEntryDialog({required this.entry});
+
+  @override
+  State<_EditEntryDialog> createState() => _EditEntryDialogState();
+}
+
+class _EditEntryDialogState extends State<_EditEntryDialog> {
+  static const List<String> _ratings = ['最高', '良い', '普通', '注意', '避けるべき'];
+
+  late final bool _isMealPlan;
+  late DateTime _dateTime;
+  late final TextEditingController _nameCtrl;
+  late final TextEditingController _kcalCtrl;
+  late final TextEditingController _proteinCtrl;
+  late final TextEditingController _carbsCtrl;
+  late final TextEditingController _fatCtrl;
+  late final TextEditingController _sodiumCtrl;
+  late String _rating;
+
+  @override
+  void initState() {
+    super.initState();
+    _isMealPlan = widget.entry.imagePath == 'MEAL_PLAN';
+    final n = Nutrition.parse(widget.entry.summary);
+    _dateTime = widget.entry.timestamp;
+    _nameCtrl = TextEditingController(text: n.foodName);
+    _kcalCtrl = TextEditingController(
+        text: n.kcalRaw.isEmpty ? '' : fmtNum(n.kcal));
+    _proteinCtrl = TextEditingController(
+        text: n.proteinRaw.isEmpty ? '' : fmtNum(n.protein));
+    _carbsCtrl = TextEditingController(
+        text: n.carbsRaw.isEmpty ? '' : fmtNum(n.carbs));
+    _fatCtrl =
+        TextEditingController(text: n.fatRaw.isEmpty ? '' : fmtNum(n.fat));
+    _sodiumCtrl = TextEditingController(
+        text: n.sodiumRaw.isEmpty ? '' : fmtNum(n.sodium));
+    _rating = _ratings.contains(n.rating) ? n.rating : '';
+  }
+
+  @override
+  void dispose() {
+    _nameCtrl.dispose();
+    _kcalCtrl.dispose();
+    _proteinCtrl.dispose();
+    _carbsCtrl.dispose();
+    _fatCtrl.dispose();
+    _sodiumCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickDateTime() async {
+    final date = await showDatePicker(
+      context: context,
+      initialDate: _dateTime,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+    );
+    if (date == null || !mounted) return;
+
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(_dateTime),
+    );
+    if (time == null) return;
+
+    setState(() {
+      _dateTime = DateTime(
+          date.year, date.month, date.day, time.hour, time.minute);
+    });
+  }
+
+  double _parseOrZero(String text) => double.tryParse(text.trim()) ?? 0;
+
+  void _save() {
+    final provider = Provider.of<FoodProvider>(context, listen: false);
+
+    if (_isMealPlan) {
+      provider.updateEntry(
+        widget.entry,
+        timestamp: _dateTime,
+        summary: widget.entry.summary,
+      );
+      Navigator.pop(context);
+      return;
+    }
+
+    final name = _nameCtrl.text.trim().isEmpty
+        ? '食事記録'
+        : _nameCtrl.text.trim();
+    final kcal = fmtNum(_parseOrZero(_kcalCtrl.text));
+    final protein = fmtNum(_parseOrZero(_proteinCtrl.text));
+    final carbs = fmtNum(_parseOrZero(_carbsCtrl.text));
+    final fat = fmtNum(_parseOrZero(_fatCtrl.text));
+    final sodium = fmtNum(_parseOrZero(_sodiumCtrl.text));
+
+    final summary =
+        'SUMMARY: $name | ${kcal}kcal | ${protein}g | ${carbs}g | ${fat}g | ${sodium}mg | $_rating';
+
+    provider.updateEntry(widget.entry, timestamp: _dateTime, summary: summary);
+    Navigator.pop(context);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('記録を編集'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            OutlinedButton.icon(
+              onPressed: _pickDateTime,
+              icon: const Icon(Icons.calendar_today, size: 18),
+              label: Text(
+                  DateFormat('yyyy/MM/dd HH:mm', 'ja_JP').format(_dateTime)),
+            ),
+            if (!_isMealPlan) ...[
+              const SizedBox(height: 16),
+              TextField(
+                controller: _nameCtrl,
+                decoration: const InputDecoration(labelText: '食べ物名'),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _kcalCtrl,
+                      keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true),
+                      decoration: const InputDecoration(
+                          labelText: 'カロリー(kcal)'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: TextField(
+                      controller: _proteinCtrl,
+                      keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true),
+                      decoration: const InputDecoration(
+                          labelText: 'タンパク質(g)'),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _carbsCtrl,
+                      keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true),
+                      decoration: const InputDecoration(
+                          labelText: '炭水化物(g)'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: TextField(
+                      controller: _fatCtrl,
+                      keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true),
+                      decoration: const InputDecoration(labelText: '脂質(g)'),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _sodiumCtrl,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(labelText: 'ナトリウム(mg)'),
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                initialValue: _rating,
+                decoration: const InputDecoration(labelText: '評価'),
+                items: [
+                  const DropdownMenuItem(value: '', child: Text('なし')),
+                  ..._ratings.map(
+                      (r) => DropdownMenuItem(value: r, child: Text(r))),
+                ],
+                onChanged: (v) => setState(() => _rating = v ?? ''),
+              ),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('キャンセル'),
+        ),
+        FilledButton(
+          onPressed: _save,
+          child: const Text('保存'),
+        ),
+      ],
+    );
   }
 }
 
