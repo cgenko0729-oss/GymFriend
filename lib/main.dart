@@ -12,6 +12,7 @@ import 'package:gal/gal.dart';
 
 import 'models/food_entry.dart';
 import 'models/nutrition.dart';
+import 'models/preset.dart';
 import 'services/gemini_service.dart';
 import 'services/settings_service.dart';
 import 'screens/settings_screen.dart';
@@ -23,7 +24,9 @@ void main() async {
 
   await Hive.initFlutter();
   Hive.registerAdapter(FoodEntryAdapter());
+  Hive.registerAdapter(FoodPresetAdapter());
   await Hive.openBox<FoodEntry>('food_entries');
+  await Hive.openBox<FoodPreset>('food_presets');
   await Hive.openBox(SettingsService.boxName);
 
   runApp(const MyApp());
@@ -54,6 +57,7 @@ class MyApp extends StatelessWidget {
 
 class FoodProvider extends ChangeNotifier {
   final Box<FoodEntry> _box = Hive.box<FoodEntry>('food_entries');
+  final Box<FoodPreset> _presetBox = Hive.box<FoodPreset>('food_presets');
   final SettingsService _settings;
   late final GeminiService _geminiService;
   bool _isLoading = false;
@@ -65,6 +69,42 @@ class FoodProvider extends ChangeNotifier {
   bool get isLoading => _isLoading;
   List<FoodEntry> get entries =>
       _box.values.toList()..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+
+  // ---- プリセット（よく食べるものの登録）----
+  List<FoodPreset> get presets => _presetBox.values.toList()
+    ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+  Future<void> savePreset(FoodEntry entry) async {
+    final preset = FoodPreset(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      summary: entry.summary,
+      createdAt: DateTime.now(),
+    );
+    await _presetBox.add(preset);
+    notifyListeners();
+  }
+
+  Future<void> deletePreset(FoodPreset preset) async {
+    await preset.delete();
+    notifyListeners();
+  }
+
+  /// プリセットからAI分析なしで即座に記録を追加する。
+  Future<FoodEntry> addFromPreset(FoodPreset preset) async {
+    final foodName = Nutrition.parse(preset.summary).foodName;
+    final note = 'プリセット「$foodName」から追加しました。';
+    final entry = FoodEntry(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      imagePath: '',
+      fullResponse: note,
+      summary: preset.summary,
+      timestamp: DateTime.now(),
+      chatHistory: ['model:$note'],
+    );
+    await _box.add(entry);
+    notifyListeners();
+    return entry;
+  }
 
   // ---- 画像分析（ストリーミング）----
   Future<FoodEntry> analyzeImageStreamed(File image) async {
@@ -603,6 +643,9 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _showEntryActions(BuildContext context, FoodEntry entry) {
+    final bool isMealPlan = entry.imagePath == 'MEAL_PLAN';
+    final bool hasData = Nutrition.parse(entry.summary).hasData;
+
     showModalBottomSheet(
       context: context,
       builder: (sheetContext) {
@@ -620,6 +663,19 @@ class _HomeScreenState extends State<HomeScreen> {
                   );
                 },
               ),
+              if (!isMealPlan && hasData)
+                ListTile(
+                  leading: const Icon(Icons.bookmark_add_outlined),
+                  title: const Text('プリセットとして保存'),
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    Provider.of<FoodProvider>(context, listen: false)
+                        .savePreset(entry);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('プリセットに保存しました')),
+                    );
+                  },
+                ),
               ListTile(
                 leading: const Icon(Icons.delete, color: Colors.red),
                 title: const Text('削除', style: TextStyle(color: Colors.red)),
@@ -660,7 +716,6 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _showImageSourceDialog(BuildContext context) {
-    if (!_ensureApiKey(context)) return;
     showModalBottomSheet(
       context: context,
       builder: (sheetContext) {
@@ -672,6 +727,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 title: const Text('食べ物の名前を入力'),
                 onTap: () {
                   Navigator.pop(sheetContext);
+                  if (!_ensureApiKey(context)) return;
                   _showTextInputDialog(context);
                 },
               ),
@@ -680,6 +736,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 title: const Text('写真を撮る'),
                 onTap: () {
                   Navigator.pop(sheetContext);
+                  if (!_ensureApiKey(context)) return;
                   _pickImage(context, ImageSource.camera);
                 },
               ),
@@ -688,10 +745,84 @@ class _HomeScreenState extends State<HomeScreen> {
                 title: const Text('アルバムから選ぶ'),
                 onTap: () {
                   Navigator.pop(sheetContext);
+                  if (!_ensureApiKey(context)) return;
                   _pickImage(context, ImageSource.gallery);
                 },
               ),
+              ListTile(
+                leading: const Icon(Icons.bookmark),
+                title: const Text('プリセットから選ぶ'),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  _showPresetPicker(context);
+                },
+              ),
             ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _showPresetPicker(BuildContext context) {
+    final presets = context.read<FoodProvider>().presets;
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) {
+        if (presets.isEmpty) {
+          return const SafeArea(
+            child: Padding(
+              padding: EdgeInsets.all(24.0),
+              child: Text(
+                '保存されたプリセットはありません。\n記録を長押しして「プリセットとして保存」で登録できます。',
+                textAlign: TextAlign.center,
+              ),
+            ),
+          );
+        }
+        return SafeArea(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+                maxHeight: MediaQuery.of(context).size.height * 0.6),
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: presets.length,
+              itemBuilder: (context, index) {
+                final preset = presets[index];
+                final n = Nutrition.parse(preset.summary);
+                final macroParts = <String>[];
+                if (n.kcalRaw.isNotEmpty) macroParts.add('🔥${n.kcalRaw}');
+                if (n.proteinRaw.isNotEmpty) macroParts.add('P ${n.proteinRaw}');
+                return ListTile(
+                  leading: const Icon(Icons.bookmark, color: Colors.deepOrange),
+                  title: Text(n.foodName),
+                  subtitle: macroParts.isEmpty
+                      ? null
+                      : Text(macroParts.join('  ｜ '),
+                          maxLines: 1, overflow: TextOverflow.ellipsis),
+                  trailing: IconButton(
+                    icon: const Icon(Icons.delete_outline, color: Colors.grey),
+                    onPressed: () {
+                      Provider.of<FoodProvider>(context, listen: false)
+                          .deletePreset(preset);
+                      Navigator.pop(sheetContext);
+                    },
+                  ),
+                  onTap: () async {
+                    Navigator.pop(sheetContext);
+                    final provider =
+                        Provider.of<FoodProvider>(context, listen: false);
+                    final entry = await provider.addFromPreset(preset);
+                    if (!context.mounted) return;
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => DetailScreen(entry: entry)),
+                    );
+                  },
+                );
+              },
+            ),
           ),
         );
       },
