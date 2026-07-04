@@ -494,10 +494,10 @@ class _HomeScreenState extends State<HomeScreen> {
               runSpacing: 4,
               children: [
                 _totalChip('🔥', '${fmtNum(t.kcal)}kcal'),
-                _totalChip('🥩', 'P ${fmtNum(t.protein)}g'),
-                _totalChip('🍚', 'C ${fmtNum(t.carbs)}g'),
-                _totalChip('🧈', 'F ${fmtNum(t.fat)}g'),
-                _totalChip('🧂', 'Na ${fmtNum(t.sodium)}mg'),
+                _totalChip('🥩', 'たんぱく質 ${fmtNum(t.protein)}g'),
+                _totalChip('🍚', '炭水化物 ${fmtNum(t.carbs)}g'),
+                _totalChip('🧈', '脂質 ${fmtNum(t.fat)}g'),
+                _totalChip('🧂', 'ナトリウム ${fmtNum(t.sodium)}mg'),
               ],
             ),
           ],
@@ -532,10 +532,12 @@ class _HomeScreenState extends State<HomeScreen> {
     final macroParts = <String>[];
     if (!isMealPlan && n.hasData) {
       if (n.kcalRaw.isNotEmpty) macroParts.add('🔥${n.kcalRaw}');
-      if (n.proteinRaw.isNotEmpty) macroParts.add('P ${n.proteinRaw}');
-      if (n.carbsRaw.isNotEmpty) macroParts.add('C ${n.carbsRaw}');
-      if (n.fatRaw.isNotEmpty) macroParts.add('F ${n.fatRaw}');
-      if (n.sodiumRaw.isNotEmpty) macroParts.add('Na ${n.sodiumRaw}');
+      if (n.proteinRaw.isNotEmpty) {
+        macroParts.add('たんぱく質 ${n.proteinRaw}');
+      }
+      if (n.carbsRaw.isNotEmpty) macroParts.add('炭水化物 ${n.carbsRaw}');
+      if (n.fatRaw.isNotEmpty) macroParts.add('脂質 ${n.fatRaw}');
+      if (n.sodiumRaw.isNotEmpty) macroParts.add('ナトリウム ${n.sodiumRaw}');
     }
     final String macroText = macroParts.join('  ｜ ');
 
@@ -793,7 +795,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 final n = Nutrition.parse(preset.summary);
                 final macroParts = <String>[];
                 if (n.kcalRaw.isNotEmpty) macroParts.add('🔥${n.kcalRaw}');
-                if (n.proteinRaw.isNotEmpty) macroParts.add('P ${n.proteinRaw}');
+                if (n.proteinRaw.isNotEmpty) {
+                  macroParts.add('たんぱく質 ${n.proteinRaw}');
+                }
                 return ListTile(
                   leading: const Icon(Icons.bookmark, color: Colors.deepOrange),
                   title: Text(n.foodName),
