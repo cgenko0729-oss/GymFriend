@@ -589,38 +589,36 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      DateFormat('MM月dd日 a h時mm分  yyyy年', 'ja_JP')
-                          .format(entry.timestamp),
-                      style:
-                          TextStyle(fontSize: 12, color: Colors.grey.shade600),
-                    ),
-                    const SizedBox(height: 4),
-                    RichText(
-                      text: TextSpan(
-                        style: DefaultTextStyle.of(context).style,
-                        children: [
-                          if (rating.isNotEmpty &&
-                              entry.imagePath != 'MEAL_PLAN')
-                            TextSpan(
-                              text: '$rating ',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: _getVerdictColor(rating),
-                                fontSize: 16,
-                              ),
-                            ),
-                          TextSpan(
-                            text: foodName,
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            DateFormat('MM月dd日 a h時mm分  yyyy年', 'ja_JP')
+                                .format(entry.timestamp),
+                            style: TextStyle(
+                                fontSize: 12, color: Colors.grey.shade600),
+                          ),
+                        ),
+                        if (rating.isNotEmpty && !isMealPlan)
+                          Text(
+                            rating,
                             style: TextStyle(
                               fontWeight: FontWeight.bold,
-                              color: _getVerdictColor(rating) != Colors.grey
-                                  ? _getVerdictColor(rating)
-                                  : Colors.black87,
-                              fontSize: 16,
+                              color: _getVerdictColor(rating),
+                              fontSize: 12.5,
                             ),
                           ),
-                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      foodName,
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: _getVerdictColor(rating) != Colors.grey
+                            ? _getVerdictColor(rating)
+                            : Colors.black87,
+                        fontSize: 16,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
