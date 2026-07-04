@@ -17,7 +17,7 @@ class FoodEntry extends HiveObject {
   String summary;
 
   @HiveField(4)
-  final DateTime timestamp;
+  DateTime timestamp;
 
   @HiveField(5)
   List<String> chatHistory; // "user:質問" または "model:回答"
